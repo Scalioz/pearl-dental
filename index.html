@@ -143,6 +143,11 @@ nav.scrolled{box-shadow:0 4px 24px rgba(10,22,40,0.08)}
 .bf-row{display:grid;grid-template-columns:1fr 1fr;gap:16px}
 .bf-submit{width:100%;background:linear-gradient(135deg,var(--ocean),var(--sky));color:var(--white);padding:14px;border-radius:8px;font-family:'Inter',sans-serif;font-size:13px;font-weight:600;letter-spacing:0.05em;border:none;cursor:pointer;transition:all .3s;box-shadow:0 6px 20px rgba(30,75,138,0.3)}
 .bf-submit:hover{transform:translateY(-2px);box-shadow:0 10px 28px rgba(30,75,138,0.4)}
+.bf-submit:disabled{opacity:0.7;cursor:wait;transform:none}
+.bf-status{display:none;margin-top:14px;padding:12px 16px;border-radius:8px;font-size:13px;font-weight:500;text-align:center}
+.bf-status.show{display:block}
+.bf-status.ok{background:#D1FAE5;color:#047857;border:1px solid #6EE7B7}
+.bf-status.err{background:#FEE2E2;color:#B91C1C;border:1px solid #FCA5A5}
 .book-info{padding:20px 0}
 .bi-item{display:flex;gap:16px;margin-bottom:32px;padding-bottom:32px;border-bottom:1px solid rgba(255,255,255,0.1)}
 .bi-icon{width:48px;height:48px;background:rgba(52,211,153,0.1);border:1px solid rgba(52,211,153,0.25);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0}
@@ -420,12 +425,12 @@ footer{background:var(--onyx);padding:60px 5% 24px}
     <div class="book-form">
       <div style="margin-bottom:28px"><div style="font-size:11px;color:var(--sky);letter-spacing:0.2em;text-transform:uppercase;margin-bottom:8px">Appointment Request</div><div style="font-family:'Libre Baskerville',serif;font-size:26px;font-weight:400;color:var(--onyx)">Book your consultation</div></div>
       <div class="bf-row">
-        <div><label class="bf-label">Full Name</label><input class="bf-input" placeholder="Your name"></div>
-        <div><label class="bf-label">Phone / WhatsApp</label><input class="bf-input" type="tel" placeholder="+91 XXXXX XXXXX"></div>
+        <div><label class="bf-label">Full Name</label><input id="bf-name" class="bf-input" placeholder="Your name"></div>
+        <div><label class="bf-label">Phone / WhatsApp</label><input id="bf-phone" class="bf-input" type="tel" placeholder="+91 XXXXX XXXXX"></div>
       </div>
       <label class="bf-label">Select Service</label>
-      <select class="bf-select">
-        <option>Choose a service</option>
+      <select id="bf-service" class="bf-select">
+        <option value="">Choose a service</option>
         <option>Smile Makeover</option>
         <option>Dental Implants</option>
         <option>Braces / Invisalign</option>
@@ -436,12 +441,13 @@ footer{background:var(--onyx);padding:60px 5% 24px}
         <option>Emergency</option>
       </select>
       <div class="bf-row">
-        <div><label class="bf-label">Preferred Doctor</label><select class="bf-select"><option>Any Available</option><option>Dr. Priya Chandrasekaran</option><option>Dr. Arjun Menon</option><option>Dr. Kavitha Suresh</option></select></div>
-        <div><label class="bf-label">Preferred Date</label><input class="bf-input" type="date"></div>
+        <div><label class="bf-label">Preferred Doctor</label><select id="bf-doctor" class="bf-select"><option>Any Available</option><option>Dr. Priya Chandrasekaran</option><option>Dr. Arjun Menon</option><option>Dr. Kavitha Suresh</option></select></div>
+        <div><label class="bf-label">Preferred Date</label><input id="bf-date" class="bf-input" type="date"></div>
       </div>
       <label class="bf-label">Additional Notes</label>
-      <textarea class="bf-textarea" placeholder="Describe your dental concern, anxiety, or any medical conditions…"></textarea>
-      <button class="bf-submit">Confirm Appointment →</button>
+      <textarea id="bf-notes" class="bf-textarea" placeholder="Describe your dental concern, anxiety, or any medical conditions…"></textarea>
+      <button id="bf-submit-btn" class="bf-submit" onclick="submitBookingForm()">Confirm Appointment →</button>
+      <div id="bf-status" class="bf-status"></div>
     </div>
   </div>
 </section>
@@ -484,6 +490,85 @@ window.addEventListener('scroll',()=>document.getElementById('dNav').classList.t
 const ro=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting)e.target.classList.add('visible')}),{threshold:.12});
 document.querySelectorAll('.reveal').forEach(el=>ro.observe(el));
 
+/* ============ BOOKING FORM SUBMISSION ============ */
+// CONFIGURE THESE TWO VALUES:
+const CLINIC_WHATSAPP_NUMBER = "919043946087"; // demo number, country code + number, no +/spaces
+const N8N_WEBHOOK_URL = "https://scalioz.app.n8n.cloud/webhook/pearl-dental-demo-lead"; // <-- replace with your real n8n webhook URL
+
+function submitBookingForm(){
+  const name = document.getElementById('bf-name').value.trim();
+  const phone = document.getElementById('bf-phone').value.trim();
+  const service = document.getElementById('bf-service').value;
+  const doctor = document.getElementById('bf-doctor').value;
+  const date = document.getElementById('bf-date').value;
+  const notes = document.getElementById('bf-notes').value.trim();
+  const statusEl = document.getElementById('bf-status');
+  const btn = document.getElementById('bf-submit-btn');
+
+  statusEl.className = 'bf-status';
+  statusEl.textContent = '';
+
+  if(!name || !phone){
+    statusEl.textContent = 'Please enter your name and phone number.';
+    statusEl.classList.add('show','err');
+    return;
+  }
+
+  const payload = {
+    name, phone, service, doctor, date, notes,
+    source: 'Website Form',
+    page: 'Pearl Dental Studio Demo',
+    timestamp: new Date().toISOString()
+  };
+
+  btn.disabled = true;
+  btn.textContent = 'Submitting…';
+
+  // 1) Send to n8n webhook -> logs to Google Sheet / CRM
+  fetch(N8N_WEBHOOK_URL, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify(payload)
+  })
+  .then(()=>{ afterSubmitSuccess(payload); })
+  .catch((err)=>{
+    console.error('Webhook error:', err);
+    // Even if the webhook fails, still let the WhatsApp handoff happen
+    // so the demo / real lead is never silently lost.
+    afterSubmitSuccess(payload, true);
+  });
+}
+
+function afterSubmitSuccess(payload, webhookFailed){
+  const statusEl = document.getElementById('bf-status');
+  const btn = document.getElementById('bf-submit-btn');
+
+  btn.disabled = false;
+  btn.textContent = 'Confirm Appointment →';
+
+  statusEl.className = 'bf-status show ok';
+  statusEl.textContent = webhookFailed
+    ? '✓ Got it! Opening WhatsApp to confirm your appointment…'
+    : '✓ Appointment request received! Opening WhatsApp to confirm…';
+
+  // 2) Open WhatsApp with a pre-filled confirmation message
+  const msg = encodeURIComponent(
+    `Hi Pearl Dental! 🦷\n\n`+
+    `New appointment request:\n`+
+    `Name: ${payload.name}\n`+
+    `Phone: ${payload.phone}\n`+
+    `Service: ${payload.service || 'Not specified'}\n`+
+    `Doctor: ${payload.doctor || 'Any Available'}\n`+
+    `Preferred Date: ${payload.date || 'Flexible'}\n`+
+    `Notes: ${payload.notes || '-'}\n\n`+
+    `Please confirm my appointment!`
+  );
+  setTimeout(()=>{
+    window.open(`https://wa.me/${CLINIC_WHATSAPP_NUMBER}?text=${msg}`, '_blank');
+  }, 600);
+}
+/* ============ END BOOKING FORM SUBMISSION ============ */
+
 let dcOpen=false, dcStage='welcome', dcName='', dcPhone='', dcService='', dcDate='';
 
 function toggleDC(){
@@ -504,7 +589,19 @@ function dcShowWA(){
   const m=document.getElementById('dc-msgs');const btn=document.createElement('button');btn.className='dcwa';
   const msg=encodeURIComponent(`Hi Pearl Dental! 🦷\n\nName: ${dcName}\nPhone: ${dcPhone}\nService: ${dcService}\nPreferred Date: ${dcDate||'Flexible'}\n\nPlease confirm my appointment!`);
   btn.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="#fff"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/><path d="M12 2C6.477 2 2 6.477 2 12c0 1.89.518 3.66 1.42 5.18L2 22l4.91-1.4A9.96 9.96 0 0012 22c5.523 0 10-4.477 10-10S17.523 2 12 2z"/></svg> Confirm on WhatsApp';
-  btn.onclick=()=>window.open(`https://wa.me/919876543210?text=${msg}`,'_blank');
+  btn.onclick=()=>{
+    window.open(`https://wa.me/${CLINIC_WHATSAPP_NUMBER}?text=${msg}`,'_blank');
+    // Also log chatbot-originated leads to the same webhook
+    fetch(N8N_WEBHOOK_URL, {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        name: dcName, phone: dcPhone, service: dcService, doctor:'', date: dcDate, notes:'',
+        source:'Website Chatbot (Rahul)', page:'Pearl Dental Studio Demo',
+        timestamp: new Date().toISOString()
+      })
+    }).catch(err=>console.error('Chatbot webhook error:', err));
+  };
   m.appendChild(btn);m.scrollTop=m.scrollHeight;
 }
 
